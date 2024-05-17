@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "KJLR"
+rootProject.name = "MyEnergiKlient"
 include(":app")
-include(":KJLR")
+include(":MyEnergiKlient")
