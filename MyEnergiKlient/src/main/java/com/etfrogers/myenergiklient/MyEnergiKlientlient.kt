@@ -18,7 +18,6 @@ import kotlinx.datetime.format.char
 import kotlinx.datetime.format.parse
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.Transient
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
@@ -53,13 +52,12 @@ class HostRedirectInterceptor(private val redirectHeaderName: String,
 
 
 class MyEnergiClient(
-    private val username: String,
-    private val password: String,
+    username: String,
+    password: String,
     //private val house_conf={}))
 ) {
     // self.__host = 'director.myenergi.net'
     private var host: String = "s18.myenergi.net"
-    private val state: String? = null
     private val client: OkHttpClient
 
     init {
@@ -349,9 +347,12 @@ private val myEnergiDateFormat = DateTimeComponents.Format {
 
 @Serializable
 abstract class MyEnergiDevice(
-    @Transient protected open val date: String = "",
-    @Transient protected open val inputTime: String = "",
+//    @Transient protected open val date: String = "",
+//    @Transient protected open val inputTime: String = "",
 ) {
+    abstract val date: String
+    abstract val inputTime: String
+
     val time: Instant
         get() = DateTimeComponents.parse("$date $inputTime", myEnergiDateFormat).toInstantUsingOffset()
 
@@ -419,7 +420,7 @@ abstract class MyEnergiDiverter(
 //    @SerialName("ectp3") private val ctPower3: Int = 0,
 //    @SerialName("ect13") private val ctName3: String = "",
 //    // All diverters
-    @Transient protected open val rawVoltage: Int = 0,
+//    @Transient protected open val rawVoltage: Int = 0,
 //    @SerialName("frq") val frequency: Float,
 //    @SerialName("grd") val grid: String,
 //    @SerialName("gen") val generation: Int,
@@ -427,16 +428,20 @@ abstract class MyEnergiDiverter(
 //    @SerialName("pri") val priority: Int,
 //
 //    @SerialName("che") val chargeAdded: Float,
-    @Transient protected open val isManualBoostInt: Int = 0,
-    @Transient protected open val isTimedBoostInt: Int = 0,
+//    @Transient protected open val isManualBoostInt: Int = 0,
+//    @Transient protected open val isTimedBoostInt: Int = 0,
     //    @SerialName("div") val chargeRate: Int,
 //
 //    // Daylight savings and Time Zone.
 //    @SerialName("dst") val dst: String,
 //    @SerialName("tz") val tz: String,
 //    @SerialName("cmt") val cmt: String,
-): MyEnergiDevice(date, inputTime) {
+): MyEnergiDevice() {
     // A Myenergi diverter device
+    abstract val rawVoltage: Int
+    abstract val isManualBoostInt: Int
+    abstract val isTimedBoostInt: Int
+
     val voltage: Float
         get() = if (rawVoltage > 1000) rawVoltage.toFloat() / 10 else rawVoltage.toFloat()
 
@@ -497,7 +502,7 @@ data class Eddi(
     val rbc: Int,
     val tp1: Int,
     val tp2: Int,
-    ): MyEnergiDiverter(date, inputTime, rawVoltage, isManualBoostInt, isTimedBoostInt)
+    ): MyEnergiDiverter()
 {
     val status: EddiStatus
         get() = EddiStatus.fromInt(statusInt)
@@ -558,7 +563,7 @@ data class Zappi(
     val zsl: Int = 0,
     val rdc: Int = 0,
     val rac: Int,
-    val rrac: Int,
+    val rrac: Int = 0,
     val zsh: Int,
     val ectt4: String,
     val ectt5: String,
@@ -566,7 +571,7 @@ data class Zappi(
     @SerialName("beingTamperedWith") val isBeingTamperedWith: Boolean,
     val phaseSetting: String
 
-    ): MyEnergiDiverter(date, inputTime, rawVoltage, isManualBoostInt, isTimedBoostInt) {
+    ): MyEnergiDiverter() {
 
     val mode: ZappiMode
         get() = ZappiMode.fromInt(modeInt)
