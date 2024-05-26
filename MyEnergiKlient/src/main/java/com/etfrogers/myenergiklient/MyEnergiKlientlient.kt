@@ -22,13 +22,26 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.decodeFromJsonElement
+import kotlinx.serialization.json.float
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.properties.Delegates
+import kotlin.reflect.KAnnotatedElement
+import kotlin.reflect.KClass
+import kotlin.reflect.KMutableProperty
+import kotlin.reflect.KProperty
+import kotlin.reflect.KProperty1
+import kotlin.reflect.full.createType
+import kotlin.reflect.full.findAnnotation
+import kotlin.reflect.full.memberProperties
 import kotlin.time.Duration
 
 
@@ -128,6 +141,43 @@ internal data class SystemProperties(
     @SerialName("asn") val serverName: String,
 )
 
+internal class InheritanceDeserializer<T>(val constructor: ()->T) : DeserializationStrategy<T>{
+    override val descriptor: SerialDescriptor = buildClassSerialDescriptor(
+        "InheritanceDeserializer${constructor()!!::class.qualifiedName}")
+
+    override fun deserialize(decoder: Decoder): T {
+        val obj = constructor()
+        val props = obj!!::class.memberProperties.associateBy(KProperty<*>::name)
+        val serialNameProps = props.map { serialName(it.value) to it.value }.toMap()
+//        println(props)
+        val input = decoder as? JsonDecoder ?: throw SerializationException("This class can be decoded only by Json format")
+        val elements = input.decodeJsonElement() as? JsonObject ?: throw SerializationException("Expected JsonObject")
+        elements.forEach { entry ->
+            val p = props[entry.key] ?: serialNameProps[entry.key]
+            if (p == null) throw SerializationException("No property found for JSON element ${entry.key}")
+            val property = p as? KMutableProperty<*> ?: throw SerializationException("Property ${p.name} is not settable")
+            val value = when (property.returnType) {
+                Boolean::class.createType() -> entry.value.jsonPrimitive.boolean
+                String::class.createType() -> entry.value.jsonPrimitive.content
+                Int::class.createType() -> entry.value.jsonPrimitive.int
+                Float::class.createType() -> entry.value.jsonPrimitive.float
+                else -> throw SerializationException("No decode implemented for type: ${property.returnType}")
+            }
+            property.setter.call(obj, value)
+        }
+        return obj
+    }
+    private fun serialName(prop: KProperty1<out T & Any, *>): String {
+        val elem = prop as KAnnotatedElement ?: return ""
+        val annotation = elem.findAnnotation<SerialName>()
+//        val annotation = prop.annotations.first { it.annotationClass.qualifiedName == "kotlinx.serialization.SerialName" }
+        return annotation?.value ?: ""
+    }
+    private inline fun <reified A : Annotation> KClass<*>.getFieldAnnotation(name: String): A? =
+        java.getField(name).getAnnotation(A::class.java)
+
+}
+
 class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor(
         "MyEnergiSystem")
@@ -143,13 +193,13 @@ class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
                     when (entry.key) {
                         "eddi" -> (entry.value as JsonArray).forEach {
                             system.eddis.add(
-                                Json.decodeFromJsonElement(Eddi.serializer(), it)
+                                Json.decodeFromJsonElement(InheritanceDeserializer<Eddi>(::Eddi), it)
                             )
                         }
                         "zappi" -> (entry.value as JsonArray).forEach {
-                            system.zappis.add(
-                                Json.decodeFromJsonElement(Zappi.serializer(), it)
-                            )
+//                            system.zappis.add(
+//                                Json.decodeFromJsonElement(Zappi.serializer(), it)
+//                            )
                         }
                         "harvi" ->
                             if ((entry.value as JsonArray).size > 0)
@@ -346,18 +396,27 @@ private val myEnergiDateFormat = DateTimeComponents.Format {
 }
 
 @Serializable
-abstract class MyEnergiDevice(
-//    @Transient protected open val date: String = "",
-//    @Transient protected open val inputTime: String = "",
+sealed class MyEnergiDevice(
 ) {
-    abstract val date: String
-    abstract val inputTime: String
+    @SerialName("dat") lateinit var date: String
+    @SerialName("tim") lateinit var inputTime: String
+    lateinit var deviceClass: String
+    @SerialName("sno") var serialNumber by Delegates.notNull<Int>()
+    @SerialName("fwv") lateinit var firmwareVersion: String
+    @SerialName("ectp1") var ctPower1 by Delegates.notNull<Int>()
+    @SerialName("ectt1") var ctName1: String = ""
+    @SerialName("ectp2") var ctPower2 by Delegates.notNull<Int>()
+    @SerialName("ectt2") var ctName2: String = ""
+    @SerialName("ectp3") var ctPower3 by Delegates.notNull<Int>()
+    @SerialName("ectt3") var ctName3: String = ""
+
 
     val time: Instant
         get() = DateTimeComponents.parse("$date $inputTime", myEnergiDateFormat).toInstantUsingOffset()
 
     val dataAge: Duration
         get() = Clock.System.now() - time
+
 
     // generate cts
 }
@@ -406,12 +465,12 @@ abstract class MyEnergiDevice(
 
 
 @Serializable
-abstract class MyEnergiDiverter(
+sealed class MyEnergiDiverter(
     // All devices
 //    val deviceClass: String,
 //    @SerialName("sno") val serialNumber: String,
-    @Transient override val date: String = "",
-    @Transient override val inputTime: String = "",
+//    @Transient override val date: String = "",
+//    @Transient override val inputTime: String = "",
 //    @SerialName("fmv") val firmwareVersion: String,
 //    @SerialName("ectp1") private val ctPower1: Int = 0,
 //    @SerialName("ect11") private val ctName1: String = "",
@@ -438,9 +497,9 @@ abstract class MyEnergiDiverter(
 //    @SerialName("cmt") val cmt: String,
 ): MyEnergiDevice() {
     // A Myenergi diverter device
-    abstract val rawVoltage: Int
-    abstract val isManualBoostInt: Int
-    abstract val isTimedBoostInt: Int
+    @SerialName("vol") var rawVoltage by Delegates.notNull<Int>()
+    @SerialName("bsm") var isManualBoostInt by Delegates.notNull<Int>()
+    @SerialName("bst") var isTimedBoostInt by Delegates.notNull<Int>()
 
     val voltage: Float
         get() = if (rawVoltage > 1000) rawVoltage.toFloat() / 10 else rawVoltage.toFloat()
@@ -454,75 +513,80 @@ abstract class MyEnergiDiverter(
 
 
 @Serializable
-data class Eddi(
-    val deviceClass: String,
-    @SerialName("sno") val serialNumber: Int,
-    @SerialName("dat") override val date: String,
-    @SerialName("tim") override val inputTime: String,
-    @SerialName("fwv") val firmwareVersion: String,
-    @SerialName("ectp1") private val ctPower1: Int = 0,
-    @SerialName("ectt1") private val ctName1: String = "",
-    @SerialName("ectp2") private val ctPower2: Int = 0,
-    @SerialName("ectt2") private val ctName2: String = "",
-    @SerialName("ectp3") private val ctPower3: Int = 0,
-    @SerialName("ectt3") private val ctName3: String = "",
+class Eddi: MyEnergiDiverter(){
     // All diverters
-    @SerialName("vol") override val rawVoltage: Int,
-    @SerialName("frq") val frequency: Float,
-    @SerialName("grd") val grid: Int,
-    @SerialName("gen") val generation: Int,
-    @SerialName("pha") val phaseCount: Int,
-    @SerialName("pri") val priority: Int,
+//    @SerialName("vol") override val rawVoltage: Int,
+    @SerialName("frq")
+    var frequency by Delegates.notNull<Float>()
 
-    @SerialName("che") val chargeAdded: Float,
-    @SerialName("bsm") override val isManualBoostInt: Int,
-    @SerialName("bst") override val isTimedBoostInt: Int,
-    @SerialName("div") val chargeRate: Int,
-    @SerialName("batteryDischargeEnabled") val isBatteryDischargeEnabled: Boolean,
-    @SerialName("newAppAvailable") val isNewAppAvailable: Boolean,
-    @SerialName("newBootloaderAvailable") val isNewBootloaderAvailable: Boolean,
-    val g100LockoutState: String,
-    val productCode: String,
-    val isVHubEnabled: Boolean,
+    @SerialName("grd")
+    var grid by Delegates.notNull<Int>()
+
+    @SerialName("gen")
+    var generation by Delegates.notNull<Int>()
+    @SerialName("pha")
+    var phaseCount by Delegates.notNull<Int>()
+    @SerialName("pri")
+    var priority by Delegates.notNull<Int>()
+
+    @SerialName("che")
+    var chargeAdded by Delegates.notNull<Float>()
+
+    //    @SerialName("bsm") override val isManualBoostInt: Int,
+//    @SerialName("bst") override val isTimedBoostInt: Int,
+    @SerialName("div")
+    var chargeRate by Delegates.notNull<Int>()
+    @SerialName("batteryDischargeEnabled")
+    var isBatteryDischargeEnabled by Delegates.notNull<Boolean>()
+    @SerialName("newAppAvailable")
+    var isNewAppAvailable by Delegates.notNull<Boolean>()
+    @SerialName("newBootloaderAvailable")
+    var isNewBootloaderAvailable by Delegates.notNull<Boolean>()
+    lateinit var g100LockoutState: String
+    lateinit var productCode: String
+    var isVHubEnabled by Delegates.notNull<Boolean>()
 
 
     // Daylight savings and Time Zone.
-    @SerialName("dst") val dst: Int,
-    @SerialName("tz") val tz: Int,
-    @SerialName("cmt") val cmt: Int,
+    @SerialName("dst")
+    var dst by Delegates.notNull<Int>()
+    @SerialName("tz")
+    var tz by Delegates.notNull<Int>()
+    @SerialName("cmt")
+    var cmt by Delegates.notNull<Int>()
 
     //Eddi specific
-    @SerialName("sta") private val statusInt: Int,
-    val hpri: Int,
-    val hno: Int,
-    val ht1: String,
-    val ht2: String,
-    val r1a: Int,
-    val r2a: Int,
-    val rbc: Int,
-    val tp1: Int,
-    val tp2: Int,
-    ): MyEnergiDiverter()
-{
+    @SerialName("sta")
+    var statusInt by Delegates.notNull<Int>()
+    var hpri by Delegates.notNull<Int>()
+    var hno by Delegates.notNull<Int>()
+    lateinit var ht1: String
+    lateinit var ht2: String
+    var r1a by Delegates.notNull<Int>()
+    var r2a by Delegates.notNull<Int>()
+    var rbc by Delegates.notNull<Int>()
+    var tp1 by Delegates.notNull<Int>()
+    var tp2 by Delegates.notNull<Int>()
+
     val status: EddiStatus
         get() = EddiStatus.fromInt(statusInt)
 }
 
-@Serializable
+//@Serializable
 data class Zappi(
-    val deviceClass: String,
-    @SerialName("sno") val serialNumber: Int,
-    @SerialName("dat") override val date: String,
-    @SerialName("tim") override val inputTime: String,
-    @SerialName("fwv") val firmwareVersion: String,
-    @SerialName("ectp1") private val ctPower1: Int = 0,
-    @SerialName("ectt1") private val ctName1: String = "",
-    @SerialName("ectp2") private val ctPower2: Int = 0,
-    @SerialName("ectt2") private val ctName2: String = "",
-    @SerialName("ectp3") private val ctPower3: Int = 0,
-    @SerialName("ectt3") private val ctName3: String = "",
+//    val deviceClass: String,
+//    @SerialName("sno") val serialNumber: Int,
+//    @SerialName("dat") override val date: String,
+//    @SerialName("tim") override val inputTime: String,
+//    @SerialName("fwv") val firmwareVersion: String,
+//    @SerialName("ectp1") val ctPower1: Int = 0,
+//    @SerialName("ectt1") val ctName1: String = "",
+//    @SerialName("ectp2") private val ctPower2: Int = 0,
+//    @SerialName("ectt2") private val ctName2: String = "",
+//    @SerialName("ectp3") private val ctPower3: Int = 0,
+//    @SerialName("ectt3") private val ctName3: String = "",
     // All diverters
-    @SerialName("vol") override val rawVoltage: Int,
+//    @SerialName("vol") override val rawVoltage: Int,
     @SerialName("frq") val frequency: Float,
     @SerialName("grd") val grid: Int,
     @SerialName("gen") val generation: Int,
@@ -530,8 +594,8 @@ data class Zappi(
     @SerialName("pri") val priority: Int,
 
     @SerialName("che") val chargeAdded: Float,
-    @SerialName("bsm") override val isManualBoostInt: Int,
-    @SerialName("bst") override val isTimedBoostInt: Int,
+//    @SerialName("bsm") override val isManualBoostInt: Int,
+//    @SerialName("bst") override val isTimedBoostInt: Int,
     @SerialName("div") val chargeRate: Int,
     @SerialName("batteryDischargeEnabled") val isBatteryDischargeEnabled: Boolean,
     @SerialName("newAppAvailable") val isNewAppAvailable: Boolean,
