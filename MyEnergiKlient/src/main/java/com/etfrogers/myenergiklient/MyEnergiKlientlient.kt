@@ -192,13 +192,13 @@ class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
                     when (entry.key) {
                         "eddi" -> (entry.value as JsonArray).forEach {
                             system.eddis.add(
-                                Json.decodeFromJsonElement(InheritanceDeserializer<Eddi>(::Eddi), it)
+                                Json.decodeFromJsonElement(InheritanceDeserializer(::Eddi), it)
                             )
                         }
                         "zappi" -> (entry.value as JsonArray).forEach {
-//                            system.zappis.add(
-//                                Json.decodeFromJsonElement(Zappi.serializer(), it)
-//                            )
+                            system.zappis.add(
+                                Json.decodeFromJsonElement(InheritanceDeserializer(::Zappi), it)
+                            )
                         }
                         "harvi" ->
                             if ((entry.value as JsonArray).size > 0)
@@ -409,7 +409,6 @@ sealed class MyEnergiDevice(
     @SerialName("ectp3") var ctPower3 by Delegates.notNull<Int>()
     @SerialName("ectt3") var ctName3: String = ""
 
-
     val time: Instant
         get() = DateTimeComponents.parse("$date $inputTime", myEnergiDateFormat).toInstantUsingOffset()
 
@@ -464,37 +463,7 @@ sealed class MyEnergiDevice(
 
 
 @Serializable
-sealed class MyEnergiDiverter(
-    // All devices
-//    val deviceClass: String,
-//    @SerialName("sno") val serialNumber: String,
-//    @Transient override val date: String = "",
-//    @Transient override val inputTime: String = "",
-//    @SerialName("fmv") val firmwareVersion: String,
-//    @SerialName("ectp1") private val ctPower1: Int = 0,
-//    @SerialName("ect11") private val ctName1: String = "",
-//    @SerialName("ectp2") private val ctPower2: Int = 0,
-//    @SerialName("ect12") private val ctName2: String = "",
-//    @SerialName("ectp3") private val ctPower3: Int = 0,
-//    @SerialName("ect13") private val ctName3: String = "",
-//    // All diverters
-//    @Transient protected open val rawVoltage: Int = 0,
-//    @SerialName("frq") val frequency: Float,
-//    @SerialName("grd") val grid: String,
-//    @SerialName("gen") val generation: Int,
-//    @SerialName("pha") val phaseCount: Int,
-//    @SerialName("pri") val priority: Int,
-//
-//    @SerialName("che") val chargeAdded: Float,
-//    @Transient protected open val isManualBoostInt: Int = 0,
-//    @Transient protected open val isTimedBoostInt: Int = 0,
-    //    @SerialName("div") val chargeRate: Int,
-//
-//    // Daylight savings and Time Zone.
-//    @SerialName("dst") val dst: String,
-//    @SerialName("tz") val tz: String,
-//    @SerialName("cmt") val cmt: String,
-): MyEnergiDevice() {
+sealed class MyEnergiDiverter: MyEnergiDevice() {
     // A Myenergi diverter device
     @SerialName("vol") var rawVoltage by Delegates.notNull<Int>()
     @SerialName("bsm") var isManualBoostInt by Delegates.notNull<Int>()
@@ -510,8 +479,6 @@ sealed class MyEnergiDiverter(
 
     @SerialName("che") var chargeAdded by Delegates.notNull<Float>()
 
-    //    @SerialName("bsm") override val isManualBoostInt: Int,
-//    @SerialName("bst") override val isTimedBoostInt: Int,
     @SerialName("div") var chargeRate by Delegates.notNull<Int>()
     @SerialName("batteryDischargeEnabled") var isBatteryDischargeEnabled by Delegates.notNull<Boolean>()
     @SerialName("newAppAvailable") var isNewAppAvailable by Delegates.notNull<Boolean>()
@@ -539,10 +506,6 @@ sealed class MyEnergiDiverter(
 
 @Serializable
 class Eddi: MyEnergiDiverter(){
-    // All diverters
-//    @SerialName("vol") override val rawVoltage: Int,
-
-    //Eddi specific
     @SerialName("sta") var statusInt by Delegates.notNull<Int>()
     var hpri by Delegates.notNull<Int>()
     var hno by Delegates.notNull<Int>()
@@ -559,69 +522,34 @@ class Eddi: MyEnergiDiverter(){
 }
 
 //@Serializable
-data class Zappi(
-//    val deviceClass: String,
-//    @SerialName("sno") val serialNumber: Int,
-//    @SerialName("dat") override val date: String,
-//    @SerialName("tim") override val inputTime: String,
-//    @SerialName("fwv") val firmwareVersion: String,
-//    @SerialName("ectp1") val ctPower1: Int = 0,
-//    @SerialName("ectt1") val ctName1: String = "",
-//    @SerialName("ectp2") private val ctPower2: Int = 0,
-//    @SerialName("ectt2") private val ctName2: String = "",
-//    @SerialName("ectp3") private val ctPower3: Int = 0,
-//    @SerialName("ectt3") private val ctName3: String = "",
-    // All diverters
-//    @SerialName("vol") override val rawVoltage: Int,
-//    @SerialName("frq") val frequency: Float,
-//    @SerialName("grd") val grid: Int,
-//    @SerialName("gen") val generation: Int,
-//    @SerialName("pha") val phaseCount: Int,
-//    @SerialName("pri") val priority: Int,
-//
-//    @SerialName("che") val chargeAdded: Float,
-////    @SerialName("bsm") override val isManualBoostInt: Int,
-////    @SerialName("bst") override val isTimedBoostInt: Int,
-//    @SerialName("div") val chargeRate: Int,
-//    @SerialName("batteryDischargeEnabled") val isBatteryDischargeEnabled: Boolean,
-//    @SerialName("newAppAvailable") val isNewAppAvailable: Boolean,
-//    @SerialName("newBootloaderAvailable") val isNewBootloaderAvailable: Boolean,
-//    val g100LockoutState: String,
-//    val productCode: String,
-//    val isVHubEnabled: Boolean,
-//
-//    // Daylight savings and Time Zone.
-//    @SerialName("dst") val dst: Int,
-//    @SerialName("tz") val tz: Int,
-//    @SerialName("cmt") val cmt: Int,
+class Zappi: MyEnergiDiverter() {
 
     // Zappi specific
-    @SerialName("sta") private val statusInt: Int,
-    @SerialName("pst") private val pStatusCode: String,
-    @SerialName("zmo") private val modeInt: Int,
+    @SerialName("sta") var statusInt by Delegates.notNull<Int>()
+    @SerialName("pst") lateinit var pStatusCode: String
+    @SerialName("zmo") var modeInt: Int by Delegates.notNull<Int>()
 
-    @SerialName("mgl") val minGreenLevel: Int = 0,
-    @SerialName("lck") val lockInt: Int = 0,
-    @SerialName("tbk") val manualBoostLevel: Int = 0,
-    @SerialName("sbk") val smartBoostLevel: Int,
-    @SerialName("sbh") val smartBoostHour: Int,
-    @SerialName("sbm") val smartBoostMinute: Int = 0,
-    @SerialName("bss") private val isSmartBoostInt: Int,
+    @SerialName("mgl") var minGreenLevel by Delegates.notNull<Int>()
+    @SerialName("lck") var lockInt by Delegates.notNull<Int>()
+    @SerialName("tbk") var manualBoostLevel by Delegates.notNull<Int>()
+    @SerialName("sbk") var smartBoostLevel by Delegates.notNull<Int>()
+    @SerialName("sbh") var smartBoostHour by Delegates.notNull<Int>()
+    @SerialName("sbm") var smartBoostMinute by Delegates.notNull<Int>()
+    @SerialName("bss") var isSmartBoostInt by Delegates.notNull<Int>()
 
-    val pwm: Int,
-    val zs: Int,
-    val zsl: Int = 0,
-    val rdc: Int = 0,
-    val rac: Int,
-    val rrac: Int = 0,
-    val zsh: Int,
-    val ectt4: String,
-    val ectt5: String,
-    val ectt6: String,
-    @SerialName("beingTamperedWith") val isBeingTamperedWith: Boolean,
-    val phaseSetting: String
+    var pwm by Delegates.notNull<Int>()
+    var zs by Delegates.notNull<Int>()
+    var zsl by Delegates.notNull<Int>()
+    var rdc by Delegates.notNull<Int>()
+    var rac by Delegates.notNull<Int>()
+    var rrac by Delegates.notNull<Int>()
+    var zsh by Delegates.notNull<Int>()
+    lateinit var ectt4: String
+    lateinit var ectt5: String
+    lateinit var ectt6: String
+    @SerialName("beingTamperedWith") var isBeingTamperedWith by Delegates.notNull<Boolean>()
+    lateinit var phaseSetting: String
 
-    ): MyEnergiDiverter() {
 
     val mode: ZappiMode
         get() = ZappiMode.fromInt(modeInt)
