@@ -168,9 +168,8 @@ internal class InheritanceDeserializer<T>(val constructor: ()->T) : Deserializat
         return obj
     }
     private fun serialName(prop: KProperty1<out T & Any, *>): String {
-        val elem = prop as KAnnotatedElement ?: return ""
+        val elem = prop as KAnnotatedElement
         val annotation = elem.findAnnotation<SerialName>()
-//        val annotation = prop.annotations.first { it.annotationClass.qualifiedName == "kotlinx.serialization.SerialName" }
         return annotation?.value ?: ""
     }
     private inline fun <reified A : Annotation> KClass<*>.getFieldAnnotation(name: String): A? =
@@ -501,6 +500,32 @@ sealed class MyEnergiDiverter(
     @SerialName("bsm") var isManualBoostInt by Delegates.notNull<Int>()
     @SerialName("bst") var isTimedBoostInt by Delegates.notNull<Int>()
 
+    @SerialName("frq") var frequency by Delegates.notNull<Float>()
+
+    @SerialName("grd") var grid by Delegates.notNull<Int>()
+
+    @SerialName("gen") var generation by Delegates.notNull<Int>()
+    @SerialName("pha") var phaseCount by Delegates.notNull<Int>()
+    @SerialName("pri") var priority by Delegates.notNull<Int>()
+
+    @SerialName("che") var chargeAdded by Delegates.notNull<Float>()
+
+    //    @SerialName("bsm") override val isManualBoostInt: Int,
+//    @SerialName("bst") override val isTimedBoostInt: Int,
+    @SerialName("div") var chargeRate by Delegates.notNull<Int>()
+    @SerialName("batteryDischargeEnabled") var isBatteryDischargeEnabled by Delegates.notNull<Boolean>()
+    @SerialName("newAppAvailable") var isNewAppAvailable by Delegates.notNull<Boolean>()
+    @SerialName("newBootloaderAvailable") var isNewBootloaderAvailable by Delegates.notNull<Boolean>()
+    lateinit var g100LockoutState: String
+    lateinit var productCode: String
+    var isVHubEnabled by Delegates.notNull<Boolean>()
+
+
+    // Daylight savings and Time Zone.
+    @SerialName("dst") var dst by Delegates.notNull<Int>()
+    @SerialName("tz") var tz by Delegates.notNull<Int>()
+    @SerialName("cmt") var cmt by Delegates.notNull<Int>()
+
     val voltage: Float
         get() = if (rawVoltage > 1000) rawVoltage.toFloat() / 10 else rawVoltage.toFloat()
 
@@ -516,48 +541,9 @@ sealed class MyEnergiDiverter(
 class Eddi: MyEnergiDiverter(){
     // All diverters
 //    @SerialName("vol") override val rawVoltage: Int,
-    @SerialName("frq")
-    var frequency by Delegates.notNull<Float>()
-
-    @SerialName("grd")
-    var grid by Delegates.notNull<Int>()
-
-    @SerialName("gen")
-    var generation by Delegates.notNull<Int>()
-    @SerialName("pha")
-    var phaseCount by Delegates.notNull<Int>()
-    @SerialName("pri")
-    var priority by Delegates.notNull<Int>()
-
-    @SerialName("che")
-    var chargeAdded by Delegates.notNull<Float>()
-
-    //    @SerialName("bsm") override val isManualBoostInt: Int,
-//    @SerialName("bst") override val isTimedBoostInt: Int,
-    @SerialName("div")
-    var chargeRate by Delegates.notNull<Int>()
-    @SerialName("batteryDischargeEnabled")
-    var isBatteryDischargeEnabled by Delegates.notNull<Boolean>()
-    @SerialName("newAppAvailable")
-    var isNewAppAvailable by Delegates.notNull<Boolean>()
-    @SerialName("newBootloaderAvailable")
-    var isNewBootloaderAvailable by Delegates.notNull<Boolean>()
-    lateinit var g100LockoutState: String
-    lateinit var productCode: String
-    var isVHubEnabled by Delegates.notNull<Boolean>()
-
-
-    // Daylight savings and Time Zone.
-    @SerialName("dst")
-    var dst by Delegates.notNull<Int>()
-    @SerialName("tz")
-    var tz by Delegates.notNull<Int>()
-    @SerialName("cmt")
-    var cmt by Delegates.notNull<Int>()
 
     //Eddi specific
-    @SerialName("sta")
-    var statusInt by Delegates.notNull<Int>()
+    @SerialName("sta") var statusInt by Delegates.notNull<Int>()
     var hpri by Delegates.notNull<Int>()
     var hno by Delegates.notNull<Int>()
     lateinit var ht1: String
@@ -587,27 +573,27 @@ data class Zappi(
 //    @SerialName("ectt3") private val ctName3: String = "",
     // All diverters
 //    @SerialName("vol") override val rawVoltage: Int,
-    @SerialName("frq") val frequency: Float,
-    @SerialName("grd") val grid: Int,
-    @SerialName("gen") val generation: Int,
-    @SerialName("pha") val phaseCount: Int,
-    @SerialName("pri") val priority: Int,
-
-    @SerialName("che") val chargeAdded: Float,
-//    @SerialName("bsm") override val isManualBoostInt: Int,
-//    @SerialName("bst") override val isTimedBoostInt: Int,
-    @SerialName("div") val chargeRate: Int,
-    @SerialName("batteryDischargeEnabled") val isBatteryDischargeEnabled: Boolean,
-    @SerialName("newAppAvailable") val isNewAppAvailable: Boolean,
-    @SerialName("newBootloaderAvailable") val isNewBootloaderAvailable: Boolean,
-    val g100LockoutState: String,
-    val productCode: String,
-    val isVHubEnabled: Boolean,
-
-    // Daylight savings and Time Zone.
-    @SerialName("dst") val dst: Int,
-    @SerialName("tz") val tz: Int,
-    @SerialName("cmt") val cmt: Int,
+//    @SerialName("frq") val frequency: Float,
+//    @SerialName("grd") val grid: Int,
+//    @SerialName("gen") val generation: Int,
+//    @SerialName("pha") val phaseCount: Int,
+//    @SerialName("pri") val priority: Int,
+//
+//    @SerialName("che") val chargeAdded: Float,
+////    @SerialName("bsm") override val isManualBoostInt: Int,
+////    @SerialName("bst") override val isTimedBoostInt: Int,
+//    @SerialName("div") val chargeRate: Int,
+//    @SerialName("batteryDischargeEnabled") val isBatteryDischargeEnabled: Boolean,
+//    @SerialName("newAppAvailable") val isNewAppAvailable: Boolean,
+//    @SerialName("newBootloaderAvailable") val isNewBootloaderAvailable: Boolean,
+//    val g100LockoutState: String,
+//    val productCode: String,
+//    val isVHubEnabled: Boolean,
+//
+//    // Daylight savings and Time Zone.
+//    @SerialName("dst") val dst: Int,
+//    @SerialName("tz") val tz: Int,
+//    @SerialName("cmt") val cmt: Int,
 
     // Zappi specific
     @SerialName("sta") private val statusInt: Int,
