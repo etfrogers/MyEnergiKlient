@@ -19,20 +19,20 @@ private val myEnergiDateFormat = DateTimeComponents.Format {
 }
 
 @Serializable
-sealed class MyEnergiDevice(
-) {
+class CtMeter(
+    val name: String,
+    val power: Int,
+    val phase: Int?
+)
+
+@Serializable
+sealed class MyEnergiDevice{
     @SerialName("dat") lateinit var date: String
     @SerialName("tim") lateinit var inputTime: String
     lateinit var deviceClass: String
     @SerialName("sno") internal var serialNumberInt by notNullVal<Int>()
     @SerialName("fwv") lateinit var firmwareVersion: String
-    @SerialName("ectp1") var ctPower1 by notNullVal<Int>()
-    @SerialName("ectt1") var ctName1: String = ""
-    @SerialName("ectp2") var ctPower2 by notNullVal<Int>()
-    @SerialName("ectt2") var ctName2: String = ""
-    @SerialName("ectp3") var ctPower3 by notNullVal<Int>()
-    @SerialName("ectt3") var ctName3: String = ""
-
+    val ctMeters: MutableMap<String, CtMeter> = mutableMapOf()
     val time: Instant
         get() = DateTimeComponents.parse("$date $inputTime", myEnergiDateFormat).toInstantUsingOffset()
 
@@ -148,12 +148,8 @@ class Zappi: MyEnergiDiverter() {
     var rac by notNullVal<Int>()
     var rrac by notNullVal<Int>()
     var zsh by notNullVal<Int>()
-    lateinit var ectt4: String
-    lateinit var ectt5: String
-    lateinit var ectt6: String
     @SerialName("beingTamperedWith") var isBeingTamperedWith by notNullVal<Boolean>()
     lateinit var phaseSetting: String
-
 
     val mode: ZappiMode
         get() = ZappiMode.fromInt(modeInt)
@@ -169,9 +165,33 @@ class Zappi: MyEnergiDiverter() {
 
     var lockStatus: ZappiLockStatus = ZappiLockStatus()
 
+    /*
+    self._values['Zappi'] = self.charge_rate
+
+
+    def boost_active(self):
+        """Return True if any kind of boost is active"""
+        return self.manual_boost or self.smart_boost or self.timed_boost
+
+    def car_connected(self):
+        """Returns True if car is connected"""
+        return self.pstatus != 'Disconnected'
+
+    def waiting_for_export(self):
+        return self.car_connected() and self.status == 'Waiting for export'
+
+    def min_charge_rate_with_level(self):
+        """Return the min charge rate in watts"""
+        return int(self.voltage * 6 * self.min_green_level / 100)
+
+    def get_values(self, key):
+        """Return a tuple of (watts, amps) for a given device"""
+        return (self._values[key], self._values[key] / self.voltage)
+ */
+
 }
 
-class ZappiLockStatus(lockValue: Int = 0){
+class ZappiLockStatus(lockValue: Int = 0) {
     /*
     'lck' - representation of current PIN lock settings and zappi lock status
     Bit 0: Locked Now
@@ -186,34 +206,57 @@ class ZappiLockStatus(lockValue: Int = 0){
     val isLockedWhenUnplugged: Boolean = bits.get(2)
     val isChargeWhenLocked: Boolean = bits.get(3)
     val isChargeSessionAllowed: Boolean = bits.get(4)
-    /*
-    class Zappi(MyEnergiDiverter):
-        """A Zappi class"""
+}
 
-        def __init__(self, data, hc):
-
-            self._values['Zappi'] = self.charge_rate
+internal fun buildCtMeters(names: Map<Int, String>, powers: Map<Int, Int>, phases: Map<Int, Int>): Map<String, CtMeter> {
 
 
-        def boost_active(self):
-            """Return True if any kind of boost is active"""
-            return self.manual_boost or self.smart_boost or self.timed_boost
+    return names.map{meter ->
+        val index = meter.key
+        val name = meter.value
+        val power = powers[index] ?: 0
+        val phase = phases[index]
+        name to CtMeter(name, power, phase)
+    }.toMap()
+/*
+ct = 0
+        while True:
+            ct += 1
+            # These are present in Harvi data for some reason.
+            ct_phase = self._glimpse_safe(data, 'ect{}p'.format(ct))
+            ct_name_key = 'ectt{}'.format(ct)
+            if ct_phase not in {1, 0}:
+                log.debug('CT %s is on phase %d', ct_name_key, ct_phase)
+            if ct_name_key not in data:
+                break
+            value = self._glimpse_safe(data, 'ectp{}'.format(ct))
+            ct_name = self._glimpse(data, ct_name_key)
+            if ct_name == 'None':
+                continue
+            if ct_name == 'Internal Load':
+                continue
+            if self.sno in house_data and ct_name_key in house_data[self.sno]:
+                ct_name = house_data[self.sno][ct_name_key]
+                value = value * -1
+            if ct_name != 'Grid':
+                if ct_name in self._values:
+                    self._values[ct_name] += value
+                else:
+                    self._values[ct_name] = value
+            else:
+                if 'Grid' not in self._values:
+                    # only take the first grid value for non-netting 3 phase
+                    self._values['Grid'] = value
+                else:
+                    if 'net_phases' in house_data and house_data['net_phases']:
+                        # 3 phase all report with same name "grid" so need to sum them
+                        # note this produces a net import/export number.
+                        # if phases are not netted Zappi assumes export monitoring on phase 1
+                        self._values['Grid'] = self._values['Grid'] + value
+        log.debug(self._values)
 
-        def car_connected(self):
-            """Returns True if car is connected"""
-            return self.pstatus != 'Disconnected'
+ */
 
-        def waiting_for_export(self):
-            return self.car_connected() and self.status == 'Waiting for export'
-
-        def min_charge_rate_with_level(self):
-            """Return the min charge rate in watts"""
-            return int(self.voltage * 6 * self.min_green_level / 100)
-
-        def get_values(self, key):
-            """Return a tuple of (watts, amps) for a given device"""
-            return (self._values[key], self._values[key] / self.voltage)
-     */
 }
 
 internal fun <T : Any> notNullVal(): ReadWriteProperty<Any?, T> = NotNullVal()

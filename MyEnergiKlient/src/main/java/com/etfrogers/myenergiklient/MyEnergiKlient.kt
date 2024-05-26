@@ -17,6 +17,7 @@ import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.descriptors.buildClassSerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.json.JsonDecoder
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.float
@@ -62,6 +63,7 @@ class HostRedirectInterceptor(private val redirectHeaderName: String,
 class MyEnergiClient(
     username: String,
     password: String,
+    private val invalidSerials: List<String> = listOf()
     //private val house_conf={}))
 ) {
     // self.__host = 'director.myenergi.net'
@@ -124,6 +126,7 @@ class MyEnergiClient(
                 raise DataTimeout(f'Request failed {suffix}, Error code {-status}: {E_CODES[-status]}')
          */
         val system = Json.decodeFromString(MyEnergiDeserializer(), jsonText)
+        system.filterOutSerials(invalidSerials)
         return system
     }
 
@@ -144,24 +147,52 @@ internal class InheritanceDeserializer<T>(val constructor: ()->T) : Deserializat
         val obj = constructor()
         val props = obj!!::class.memberProperties.associateBy(KProperty<*>::name)
         val serialNameProps = props.map { serialName(it.value) to it.value }.toMap()
-//        println(props)
         val input = decoder as? JsonDecoder ?: throw SerializationException("This class can be decoded only by Json format")
         val elements = input.decodeJsonElement() as? JsonObject ?: throw SerializationException("Expected JsonObject")
+        val ctPowers: MutableMap<Int, Int> = mutableMapOf()
+        val ctNames: MutableMap<Int, String> = mutableMapOf()
+        val ctPhases: MutableMap<Int, Int> = mutableMapOf()
+        val pattern = Regex("ect(p|t|[0-9])(p|[0-9])")
         elements.forEach { entry ->
-            val p = props[entry.key] ?: serialNameProps[entry.key]
-            if (p == null) throw SerializationException("No property found for JSON element ${entry.key}")
-            val property = p as? KMutableProperty<*> ?: throw SerializationException("Property ${p.name} is not settable")
-            val value = when (property.returnType) {
-                Boolean::class.createType() -> entry.value.jsonPrimitive.boolean
-                String::class.createType() -> entry.value.jsonPrimitive.content
-                Int::class.createType() -> entry.value.jsonPrimitive.int
-                Float::class.createType() -> entry.value.jsonPrimitive.float
-                else -> throw SerializationException("No decode implemented for type: ${property.returnType}")
-            }
-            property.setter.call(obj, value)
+            val value = entry.value.jsonPrimitive
+            val match = pattern.matchEntire(entry.key)
+            if (match != null) {
+                val index = match.groupValues[2].toIntOrNull() ?: match.groupValues[1].toIntOrNull()
+                ?: throw SerializationException("Unable to parse CT correctly")
+                when (match.groupValues[1]) {
+                    "p" -> ctPowers[index] = value.int
+                    "t" -> ctNames[index] = value.content
+                    else -> ctPhases[index] = value.int // group 1 is digit so only matches phase pattern
+                }
+            } else setProperty(props, entry, serialNameProps, obj)
         }
+        val ctMeters = buildCtMeters(ctNames, ctPowers, ctPhases)
+        if (ctMeters.isNotEmpty())
+                (props["ctMeters"]!!.getter.call(obj) as? MutableMap<String, CtMeter>)!!.putAll(ctMeters)
         return obj
     }
+
+    private fun setProperty(
+        props: Map<String, KProperty1<out T & Any, *>>,
+        entry: Map.Entry<String, JsonElement>,
+        serialNameProps: Map<String, KProperty1<out T & Any, *>>,
+        obj: T
+    ) {
+        val p = props[entry.key] ?: serialNameProps[entry.key]
+        if (p == null) throw SerializationException("No property found for JSON element ${entry.key}")
+        val property = p as? KMutableProperty<*>
+            ?: throw SerializationException("Property ${p.name} is not settable")
+        val untypedValue = entry.value.jsonPrimitive
+        val value = when (property.returnType) {
+            Boolean::class.createType() -> untypedValue.boolean
+            String::class.createType() -> untypedValue.content
+            Int::class.createType() -> untypedValue.int
+            Float::class.createType() -> untypedValue.float
+            else -> throw SerializationException("No decode implemented for type: ${property.returnType}")
+        }
+        property.setter.call(obj, value)
+    }
+
     private fun serialName(prop: KProperty1<out T & Any, *>): String {
         val elem = prop as KAnnotatedElement
         val annotation = elem.findAnnotation<SerialName>()
@@ -218,8 +249,10 @@ class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
 
 
 class MyEnergiSystem{
-    val eddis = mutableListOf<Eddi>()
-    val zappis = mutableListOf<Zappi>()
+    var eddis = mutableListOf<Eddi>()
+        private set
+    var zappis = mutableListOf<Zappi>()
+        private set
     val harvis = mutableListOf<Harvi>()
     val libbis = mutableListOf<Libbi>()
     lateinit var firmwareVersion: String
@@ -231,39 +264,17 @@ class MyEnergiSystem{
         serverName = props.serverName
         firmwareVersion = props.firmwareVersion
     }
+
+    fun filterOutSerials(invalidSerials: List<String>) {
+        eddis = eddis.filter { it.serialNumber !in invalidSerials }.toMutableList()
+        zappis = zappis.filter { it.serialNumber !in invalidSerials }.toMutableList()
+    }
     /*
     def __init__(self, raw, check, house_data):
-        #
-        # Create a new object, takes a data structure returned from json.load()
-        #
-        log.debug('Data, as received\n%s', pp.pformat(raw))
         self._values = {}
         self._value_time = {}
         self._zid = None
-        self._zappis = []
-        self._eddis = []
-        self._harvis = []
         self._house_data = house_data
-
-        for device in raw:
-            for (e, v) in device.items():
-                # Skip devices that don't exist.
-                if isinstance(v, list) and len(v) == 0:
-                    continue
-                if e in ('asn', 'fwv'):
-                    continue
-                for device_data in v:
-                    if not isinstance(device_data, dict):
-                        continue
-                    device_data = dict(device_data)
-                    if e == 'zappi':
-                        self._zappis.append(Zappi(device_data, house_data))
-                    elif e == 'eddi':
-                        self._eddis.append(Eddi(device_data, house_data))
-                    elif e == 'harvi':
-                        self._harvis.append(Harvi(device_data, house_data))
-                    if device_data:
-                        log.info('Extra data for %s:%s', e, device_data)
 
         for device in self._zappis + self._eddis + self._harvis:
             for (key, value) in device._values.items():
@@ -327,96 +338,8 @@ class MyEnergiSystem{
         for key in self._values:
             yield(key, self._values[key], self._value_time[key])
 
-    def report(self, sockets):
-        """Return a string describing current states"""
-
-        rep = ReportCapture()
-
-        house_use = self._values['Grid']
-
-        if 'Generation' in self._values:
-            house_use += self._values['Generation']
-
-        try:
-            house_use -= self._values['iBoost']
-            house_use -= self._values['Heating']
-            rep.log('Heating is using {}'.format(self._values['Heating']))
-        except KeyError:
-            pass
-
-        for zappi in self.zappi_list():
-            zappi.report(rep)
-            house_use -= zappi.charge_rate
-
-        sockets_total = 0
-        kwh_today = 0
-        if sockets:
-            for device in sockets:
-                rep.log(device)
-                house_use -= device.watts
-                if device.on and device.mode in ['auto']:
-                    sockets_total += device.watts
-                kwh_today += device.todays_kwh()
-        if kwh_today:
-            rep.log('Total used by sockets today {:.2f}kWh'.format(kwh_today))
-        self._values['House'] = house_use
-        # This one isn't strictly correct as it's computed from different inputs
-        # which may have different sample times.
-        self._value_time['House'] = self._value_time['Grid']
-        rep.log('House is using {}'.format(power_format(house_use)))
-        if sockets_total:
-            rep.log('Sockets are using {}'.format(power_format(sockets_total)))
-        # (iboost_watts, iboost_amps) = self._values('iBoost')
-        if 'iBoost' in self._values:
-            iboost_watts = self._values['iBoost']
-            rep.log('iBoost is using {}'.format(power_format(iboost_watts)))
-        if 'Generation' in self._values:
-            rep.log('Solar is generating {}'.format(power_format(self._values['Generation'])))
-        grid = self._values['Grid']
-        if grid > 0:
-            rep.log('Importing {}'.format(power_format(grid)))
-        else:
-            rep.log('Exporting {}'.format(power_format(-grid)))
-
-        return str(rep)
-
      */
 }
-
-//        ct = 0
-//        while True:
-//            ct += 1
-//            # These are present in Harvi data for some reason.
-//            ct_phase = self._glimpse_safe(data, 'ect{}p'.format(ct))
-//            ct_name_key = 'ectt{}'.format(ct)
-//            if ct_phase not in {1, 0}:
-//                log.debug('CT %s is on phase %d', ct_name_key, ct_phase)
-//            if ct_name_key not in data:
-//                break
-//            value = self._glimpse_safe(data, 'ectp{}'.format(ct))
-//            ct_name = self._glimpse(data, ct_name_key)
-//            if ct_name == 'None':
-//                continue
-//            if ct_name == 'Internal Load':
-//                continue
-//            if self.sno in house_data and ct_name_key in house_data[self.sno]:
-//                ct_name = house_data[self.sno][ct_name_key]
-//                value = value * -1
-//            if ct_name != 'Grid':
-//                if ct_name in self._values:
-//                    self._values[ct_name] += value
-//                else:
-//                    self._values[ct_name] = value
-//            else:
-//                if 'Grid' not in self._values:
-//                    # only take the first grid value for non-netting 3 phase
-//                    self._values['Grid'] = value
-//                else:
-//                    if 'net_phases' in house_data and house_data['net_phases']:
-//                        # 3 phase all report with same name "grid" so need to sum them
-//                        # note this produces a net import/export number.
-//                        # if phases are not netted Zappi assumes export monitoring on phase 1
-//                        self._values['Grid'] = self._values['Grid'] + value
 
 //    def get_values(self, key):
 //        """Return a tuple of (watts, None) for a given device"""
