@@ -439,56 +439,9 @@ data class MyEnergiConfig(
 fun main(){
     val text = File("config.json").readText()
     val config = Json.decodeFromString<MyEnergiConfig>(text)
-    println(MyEnergiClient(config.username, config.apiKey).getCurrentStatus())
+    val status = MyEnergiClient(config.username, config.apiKey).getCurrentStatus()
+    println(status)
 }
-
-/*
-#!/usr/bin/python3
-
-"""Classes for handling myenergi server data"""
-
-*/
-enum class ZappiMode{
-    FAULT_OR_STARTUP, FAST, ECO, ECO_PLUS, STOP;
-
-    companion object {
-        private val VALUES = entries.toTypedArray()
-        fun fromInt(value: Int) = VALUES.first { it.ordinal == value }
-    }
-}
-
-enum class ZappiStatus {
-    STARTING, WAITING_FOR_EXPORT, DSR, DIVERTING, BOOSTING, HOT;
-    companion object {
-        private val VALUES = ZappiStatus.entries.toTypedArray()
-        fun fromInt(value: Int) = VALUES.first { it.ordinal == value }
-    }
-}
-
-enum class ZappiCarStatus(val str: String){
-    DISCONNECTED("A"), CONNECTED ("B1"), WAITING_FOR_EV("B2"),
-    CHARGE_STARTING("C1"), CHARGING("C2"), FAULT("F");
-
-    companion object {
-        private val VALUES = ZappiCarStatus.entries.toTypedArray()
-        fun fromStringCode(str: String) = VALUES.first { it.str == str }
-    }
-}
-
-// Eddi Boost Types.
-val EBT = listOf("Not boostable", "Boiler", "Heat Pump", "Battery")
-
-enum class EddiStatus{
-    UNKNOWN, WAITING_FOR_SURPLUS, PAUSED, DIVERTING,
-    BOOST, MAX_TEMP_REACHED, STOPPED;
-    companion object {
-        private val VALUES = EddiStatus.entries.toTypedArray()
-        fun fromInt(value: Int) = VALUES.first { it.ordinal == value }
-    }
-}
-val ESTATUSES = listOf(
-    "?", "Waiting for surplus", "Paused", "Diverting",
-    "Boost", "Max Temp Reached", "Stopped")
 
 val E_CODES = mapOf(0 to "OK",
            1 to "Invalid ID",
@@ -546,23 +499,6 @@ class HostChanged(val newHost: String, msg: String): DataException(msg)
     // Server host has changed.
 /*
 
-class ReportCapture:
-    """Class for concatenating log strings"""
-
-    def __init__(self):
-        self.output = []
-
-    def log(self, line):
-        """Add a log line"""
-        output = str(line)
-        self.output.append(output)
-        log.debug(output)
-
-    def get_log(self):
-        return '\n'.join(self.output)
-
-    def __str__(self):
-        return self.get_log()
 
 
 class MyEnergiDevice:
