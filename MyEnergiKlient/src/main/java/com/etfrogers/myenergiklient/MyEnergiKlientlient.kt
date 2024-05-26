@@ -39,6 +39,8 @@ import kotlin.reflect.full.memberProperties
 
 
 // Based heavily on https://github.com/ashleypittman/mec
+private const val DEFAULT_MYENERGI_SERVER = "s18.myenergi.net"
+const val REDIRECT_HEADER = "X_MYENERGI-asn"
 
 class HostRedirectInterceptor(private val redirectHeaderName: String,
                               private var currentHost: String) : Interceptor {
@@ -63,7 +65,7 @@ class MyEnergiClient(
     //private val house_conf={}))
 ) {
     // self.__host = 'director.myenergi.net'
-    private var host: String = "s18.myenergi.net"
+    private var host: String = DEFAULT_MYENERGI_SERVER
     private val client: OkHttpClient
 
     init {
@@ -73,7 +75,7 @@ class MyEnergiClient(
         client = OkHttpClient.Builder()
             .authenticator(CachingAuthenticatorDecorator(authenticator, authCache))
             .addInterceptor(AuthenticationCacheInterceptor(authCache))
-            .addInterceptor(HostRedirectInterceptor(ASN, host))
+            .addInterceptor(HostRedirectInterceptor(REDIRECT_HEADER, host))
 //            .addHeader("User-Agent", "Wget/1.14 (linux-gnu)")
 //            .connectTimeout(10, TimeUnit.SECONDS)
             .build()
@@ -527,8 +529,6 @@ def power_format(watts):
 
 
 */
-
-const val ASN = "X_MYENERGI-asn"
 
 abstract class DataException(msg: String = ""): Exception(msg)
     // General exception class
