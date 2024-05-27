@@ -261,6 +261,27 @@ class MyEnergiSystem internal constructor(
     val firmwareVersion: String? = null,
     val serverName: String? = null,
 ) {
+    val powers: Map<String, Int>
+    init {
+        val pwrs = mutableMapOf<String, Int>()
+        for (device in deviceList(priorityOrder = true)) {
+            for ((name, meter) in device.ctMeters) {
+                assert(name == meter.name)
+                val key = if (name != "Internal Load") name else {
+                    var baseKey = device::class.simpleName!!
+                    if (eddis.size == 1 && zappis.size == 1) baseKey
+                    else baseKey + device.priority.toString()
+                }
+                // skip a grid meter with reading of zero. Likely not connected, but reported anyway
+                if (name == "Grid" && meter.power == 0 && meter.phase == null) continue
+                if (key in pwrs){
+                    throw DuplicateMeterException("Found two entries for meter label: $key")
+                }
+                pwrs[key] = meter.power
+            }
+        }
+        powers = pwrs.toMap()
+    }
     /*
     def __init__(self, raw, check, house_data):
         self._values = {}
@@ -284,15 +305,22 @@ class MyEnergiSystem internal constructor(
                 self._check_device_value(device.generation, 'Generation')
                 self._check_device_value(device.grid, 'Grid')
 */
-    fun zappiList(priorityOrder: Boolean = false): List<Zappi> {
+    fun zappiList(priorityOrder: Boolean = true): List<Zappi> {
         // Return a constant-order Zappi list.
         return zappis.sortedBy {
             if (priorityOrder)  it.priority.toString() else it.serialNumber
         }
     }
-    fun eddiList(priorityOrder: Boolean = false): List<Eddi> {
+
+    fun eddiList(priorityOrder: Boolean = true): List<Eddi> {
         // Return a constant-order Eddi list.
         return eddis.sortedBy {
+            if (priorityOrder) it.priority.toString() else it.serialNumber
+        }
+    }
+
+    fun deviceList(priorityOrder: Boolean = true): List<MyEnergiDiverter> {
+        return (eddis+zappis).sortedBy {
             if (priorityOrder) it.priority.toString() else it.serialNumber
         }
     }
@@ -412,6 +440,8 @@ class DataTimeout: DataException()
 
 class HostChanged(val newHost: String, msg: String): DataException(msg)
     // Server host has changed.
+
+class DuplicateMeterException(msg: String): DataException(msg)
 /*
 
 class MyEnergiHost:
