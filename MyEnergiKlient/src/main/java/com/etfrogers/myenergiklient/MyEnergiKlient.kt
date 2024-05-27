@@ -139,13 +139,13 @@ internal data class SystemProperties(
     @SerialName("asn") val serverName: String,
 )
 
-internal class InheritanceDeserializer<T>(val constructor: ()->T) : DeserializationStrategy<T>{
+internal class DeviceDeserializer<T: MyEnergiDevice>(val constructor: ()->T) : DeserializationStrategy<T>{
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor(
-        "InheritanceDeserializer${constructor()!!::class.qualifiedName}")
+        "InheritanceDeserializer${constructor()::class.qualifiedName}")
 
     override fun deserialize(decoder: Decoder): T {
         val obj = constructor()
-        val props = obj!!::class.memberProperties.associateBy(KProperty<*>::name)
+        val props = obj::class.memberProperties.associateBy(KProperty<*>::name)
         val serialNameProps = props.map { serialName(it.value) to it.value }.toMap()
         val input = decoder as? JsonDecoder ?: throw SerializationException("This class can be decoded only by Json format")
         val elements = input.decodeJsonElement() as? JsonObject ?: throw SerializationException("Expected JsonObject")
@@ -168,14 +168,14 @@ internal class InheritanceDeserializer<T>(val constructor: ()->T) : Deserializat
         }
         val ctMeters = buildCtMeters(ctNames, ctPowers, ctPhases)
         if (ctMeters.isNotEmpty())
-                (props["ctMeters"]!!.getter.call(obj) as? MutableMap<String, CtMeter>)!!.putAll(ctMeters)
+                obj.setMeters(ctMeters)
         return obj
     }
 
     private fun setProperty(
-        props: Map<String, KProperty1<out T & Any, *>>,
+        props: Map<String, KProperty1<out T, *>>,
         entry: Map.Entry<String, JsonElement>,
-        serialNameProps: Map<String, KProperty1<out T & Any, *>>,
+        serialNameProps: Map<String, KProperty1<out T, *>>,
         obj: T
     ) {
         val p = props[entry.key] ?: serialNameProps[entry.key]
@@ -193,13 +193,11 @@ internal class InheritanceDeserializer<T>(val constructor: ()->T) : Deserializat
         property.setter.call(obj, value)
     }
 
-    private fun serialName(prop: KProperty1<out T & Any, *>): String {
+    private fun serialName(prop: KProperty1<out T, *>): String {
         val elem = prop as KAnnotatedElement
         val annotation = elem.findAnnotation<SerialName>()
         return annotation?.value ?: ""
     }
-    private inline fun <reified A : Annotation> KClass<*>.getFieldAnnotation(name: String): A? =
-        java.getField(name).getAnnotation(A::class.java)
 
 }
 
@@ -218,12 +216,12 @@ class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
                     when (entry.key) {
                         "eddi" -> (entry.value as JsonArray).forEach {
                             system.eddis.add(
-                                Json.decodeFromJsonElement(InheritanceDeserializer(::Eddi), it)
+                                Json.decodeFromJsonElement(DeviceDeserializer(::Eddi), it)
                             )
                         }
                         "zappi" -> (entry.value as JsonArray).forEach {
                             system.zappis.add(
-                                Json.decodeFromJsonElement(InheritanceDeserializer(::Zappi), it)
+                                Json.decodeFromJsonElement(DeviceDeserializer(::Zappi), it)
                             )
                         }
                         "harvi" ->
@@ -249,10 +247,8 @@ class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
 
 
 class MyEnergiSystem{
-    var eddis = mutableListOf<Eddi>()
-        private set
-    var zappis = mutableListOf<Zappi>()
-        private set
+    val eddis = mutableListOf<Eddi>()
+    val zappis = mutableListOf<Zappi>()
     val harvis = mutableListOf<Harvi>()
     val libbis = mutableListOf<Libbi>()
     lateinit var firmwareVersion: String
@@ -266,8 +262,8 @@ class MyEnergiSystem{
     }
 
     fun filterOutSerials(invalidSerials: List<String>) {
-        eddis = eddis.filter { it.serialNumber !in invalidSerials }.toMutableList()
-        zappis = zappis.filter { it.serialNumber !in invalidSerials }.toMutableList()
+        eddis.removeAll { it.serialNumber in invalidSerials }
+        zappis.removeAll { it.serialNumber !in invalidSerials }
     }
     /*
     def __init__(self, raw, check, house_data):
@@ -291,21 +287,20 @@ class MyEnergiSystem{
                     raise DataBogus
                 self._check_device_value(device.generation, 'Generation')
                 self._check_device_value(device.grid, 'Grid')
-
-    def zappi_list(self, priority_order=False):
-        # Return a constant-order Zappi list.
-
-        if priority_order:
-            return sorted(self._zappis, key=lambda d: d.priority)
-        return sorted(self._zappis, key=lambda d: d.sno)
-
-    def eddi_list(self, priority_order=False):
-        # Return a constant-order Eddi list.
-
-        if priority_order:
-            return sorted(self._eddis, key=lambda d: d.priority)
-        return sorted(self._eddis, key=lambda d: d.sno)
-
+*/
+    fun zappiList(priorityOrder: Boolean = false): List<Zappi> {
+        // Return a constant-order Zappi list.
+        return zappis.sortedBy {
+            if (priorityOrder)  it.priority.toString() else it.serialNumber
+        }
+    }
+    fun eddiList(priorityOrder: Boolean = false): List<Eddi> {
+        // Return a constant-order Eddi list.
+        return eddis.sortedBy {
+            if (priorityOrder) it.priority.toString() else it.serialNumber
+        }
+    }
+/*
     def _check_device_value(self, val, vname):
 
         for harvi in self._harvis:
@@ -356,13 +351,14 @@ data class MyEnergiConfig(
     val username: String,
     @SerialName("api-key") val apiKey: String,
     @SerialName("zappi-sno") val zappiSerialNumber: String,
+    @SerialName("old-serial-numbers") val oldSerialNumbers: List<String> = listOf()
 )
 
 
 fun main(){
     val text = File("config.json").readText()
     val config = Json.decodeFromString<MyEnergiConfig>(text)
-    val status = MyEnergiClient(config.username, config.apiKey).getCurrentStatus()
+    val status = MyEnergiClient(config.username, config.apiKey, config.oldSerialNumbers).getCurrentStatus()
     println(status)
 }
 
@@ -421,272 +417,6 @@ class DataTimeout: DataException()
 class HostChanged(val newHost: String, msg: String): DataException(msg)
     // Server host has changed.
 /*
-
-
-
-class MyEnergiDevice:
-
-    def __init__(self, data, house_data):
-        self.sno = self._glimpse(data, 'sno')
-        date = self._glimpse(data, 'dat')
-        tsam = self._glimpse(data, 'tim')
-        self.time = time.strptime('{} {} GMT'.format(date, tsam), '%d-%m-%Y %H:%M:%S %Z')
-        elapsed = time.mktime(time.gmtime()) - time.mktime(self.time)
-        log.debug('Data from %s is %d second(s) old', type(self), elapsed)
-        self._values = {}
-        self.data_age = elapsed
-        self.firmware = self._glimpse(data, 'fwv')
-        if self.sno in house_data and 'name' in house_data[self.sno]:
-            self.zname = house_data[self.sno]['name']
-        else:
-            self.zname = 'Zappi'
-        ct = 0
-        while True:
-            ct += 1
-            # These are present in Harvi data for some reason.
-            ct_phase = self._glimpse_safe(data, 'ect{}p'.format(ct))
-            ct_name_key = 'ectt{}'.format(ct)
-            if ct_phase not in {1, 0}:
-                log.debug('CT %s is on phase %d', ct_name_key, ct_phase)
-            if ct_name_key not in data:
-                break
-            value = self._glimpse_safe(data, 'ectp{}'.format(ct))
-            ct_name = self._glimpse(data, ct_name_key)
-            if ct_name == 'None':
-                continue
-            if ct_name == 'Internal Load':
-                continue
-            if self.sno in house_data and ct_name_key in house_data[self.sno]:
-                ct_name = house_data[self.sno][ct_name_key]
-                value = value * -1
-            if ct_name != 'Grid':
-                if ct_name in self._values:
-                    self._values[ct_name] += value
-                else:
-                    self._values[ct_name] = value
-            else:
-                if 'Grid' not in self._values:
-                    # only take the first grid value for non-netting 3 phase
-                    self._values['Grid'] = value
-                else:
-                    if 'net_phases' in house_data and house_data['net_phases']:
-                        # 3 phase all report with same name "grid" so need to sum them
-                        # note this produces a net import/export number.
-                        # if phases are not netted Zappi assumes export monitoring on phase 1
-                        self._values['Grid'] = self._values['Grid'] + value
-        log.debug(self._values)
-
-    def _glimpse_safe(self, data, key):
-        """Return key and delete from data"""
-        if key not in data:
-            return 0
-        value = data[key]
-        del data[key]
-        return value
-
-    def _glimpse(self, data, key):
-        """Return key and delete from data"""
-        value = data[key]
-        del data[key]
-        return value
-
-    def report(self, rep=None):
-        if not rep:
-            rep = ReportCapture()
-
-        rep.log(str(self))
-        return rep.get_log()
-
-    def get_values(self, key):
-        """Return a tuple of (watts, None) for a given device"""
-
-        # This matches Zappi.get_values() but in this case the voltage
-        # is not known, so reply None for the amps.
-        return (self._values[key], None)
-
-
-class MyEnergiDiverter(MyEnergiDevice):
-    """A Myenergi diverter device"""
-
-    def __init__(self, data, hc):
-        super().__init__(data, hc)
-        voltage = self._glimpse(data, 'vol')
-        if voltage > 1000:
-            self.voltage = voltage / 10
-        else:
-            self.voltage = voltage
-        self.frequency = self._glimpse_safe(data, 'frq')
-        log.debug('Voltage %f frequency %f', self.voltage, self.frequency)
-        self.grid = self._glimpse_safe(data, 'grd')
-        self.generation = self._glimpse_safe(data, 'gen')
-        self.phase_count = self._glimpse(data, 'pha')
-        self.priority = self._glimpse(data, 'pri')
-
-        self.charge_added = self._glimpse_safe(data, 'che')
-        self.manual_boost = bool(self._glimpse_safe(data, 'bsm'))
-        self.timed_boost = bool(self._glimpse_safe(data, 'bst'))
-        self.charge_rate = self._glimpse_safe(data, 'div')
-
-        # Daylight savings and Time Zone.
-        self.dst = self._glimpse_safe(data, 'dst')
-        self.tz = self._glimpse_safe(data, 'tz')
-
-        self.cmt = self._glimpse_safe(data, 'cmt')
-        if self.cmt != 254:
-            log.debug('cmt is %d', self.cmt)
-
-
-class MyEnergi:
-    """Class representing data returned"""
-
-    def __init__(self, raw, check, house_data):
-        #
-        # Create a new object, takes a data structure returned from json.load()
-        #
-        log.debug('Data, as received\n%s', pp.pformat(raw))
-        self._values = {}
-        self._value_time = {}
-        self._zid = None
-        self._zappis = []
-        self._eddis = []
-        self._harvis = []
-        self._house_data = house_data
-
-        for device in raw:
-            for (e, v) in device.items():
-                # Skip devices that don't exist.
-                if isinstance(v, list) and len(v) == 0:
-                    continue
-                if e in ('asn', 'fwv'):
-                    continue
-                for device_data in v:
-                    if not isinstance(device_data, dict):
-                        continue
-                    device_data = dict(device_data)
-                    if e == 'zappi':
-                        self._zappis.append(Zappi(device_data, house_data))
-                    elif e == 'eddi':
-                        self._eddis.append(Eddi(device_data, house_data))
-                    elif e == 'harvi':
-                        self._harvis.append(Harvi(device_data, house_data))
-                    if device_data:
-                        log.info('Extra data for %s:%s', e, device_data)
-
-        for device in self._zappis + self._eddis + self._harvis:
-            for (key, value) in device._values.items():
-                if key == 'Zappi':
-                    continue
-                if key in self._values:
-                    self._values[key] += value
-                else:
-                    self._values[key] = value
-                self._value_time[key] = device.time
-        if check:
-            for device in self._zappis + self._eddis:
-                if device.voltage == 0:
-                    raise DataBogus
-                self._check_device_value(device.generation, 'Generation')
-                self._check_device_value(device.grid, 'Grid')
-
-    def zappi_list(self, priority_order=False):
-        # Return a constant-order Zappi list.
-
-        if priority_order:
-            return sorted(self._zappis, key=lambda d: d.priority)
-        return sorted(self._zappis, key=lambda d: d.sno)
-
-    def eddi_list(self, priority_order=False):
-        # Return a constant-order Eddi list.
-
-        if priority_order:
-            return sorted(self._eddis, key=lambda d: d.priority)
-        return sorted(self._eddis, key=lambda d: d.sno)
-
-    def _check_device_value(self, val, vname):
-
-        for harvi in self._harvis:
-            if harvi.data_age > 120:
-                log.warning('Harvi data is old')
-                return
-        try:
-            val2 = self._values[vname]
-        except KeyError:
-            return
-        if val != val2:
-            self._values[vname] = int((val + val2)/2)
-            diff = abs(val - val2)
-            if diff > 200:
-
-                try:
-                    percent = diff/abs(self._values[vname]/100)
-                except ZeroDivisionError:
-                    # This has happened when the CT is reading 1940
-                    # one Zappi is reporting 1940 and one is reporting
-                    # -1939
-                    percent = 6
-                if percent > 5:
-                    log.info("Discrepancy in %s values: %d %d", vname, val, val2)
-                    log.info("{:.2f}% difference".format(percent))
-                    raise DataBogus
-
-    def get_readings(self):
-        """Generator function for returning power values"""
-        for key in self._values:
-            yield(key, self._values[key], self._value_time[key])
-
-    def report(self, sockets):
-        """Return a string describing current states"""
-
-        rep = ReportCapture()
-
-        house_use = self._values['Grid']
-
-        if 'Generation' in self._values:
-            house_use += self._values['Generation']
-
-        try:
-            house_use -= self._values['iBoost']
-            house_use -= self._values['Heating']
-            rep.log('Heating is using {}'.format(self._values['Heating']))
-        except KeyError:
-            pass
-
-        for zappi in self.zappi_list():
-            zappi.report(rep)
-            house_use -= zappi.charge_rate
-
-        sockets_total = 0
-        kwh_today = 0
-        if sockets:
-            for device in sockets:
-                rep.log(device)
-                house_use -= device.watts
-                if device.on and device.mode in ['auto']:
-                    sockets_total += device.watts
-                kwh_today += device.todays_kwh()
-        if kwh_today:
-            rep.log('Total used by sockets today {:.2f}kWh'.format(kwh_today))
-        self._values['House'] = house_use
-        # This one isn't strictly correct as it's computed from different inputs
-        # which may have different sample times.
-        self._value_time['House'] = self._value_time['Grid']
-        rep.log('House is using {}'.format(power_format(house_use)))
-        if sockets_total:
-            rep.log('Sockets are using {}'.format(power_format(sockets_total)))
-        # (iboost_watts, iboost_amps) = self._values('iBoost')
-        if 'iBoost' in self._values:
-            iboost_watts = self._values['iBoost']
-            rep.log('iBoost is using {}'.format(power_format(iboost_watts)))
-        if 'Generation' in self._values:
-            rep.log('Solar is generating {}'.format(power_format(self._values['Generation'])))
-        grid = self._values['Grid']
-        if grid > 0:
-            rep.log('Importing {}'.format(power_format(grid)))
-        else:
-            rep.log('Exporting {}'.format(power_format(-grid)))
-
-        return str(rep)
-
 
 class MyEnergiHost:
     """Class for downloading data"""
