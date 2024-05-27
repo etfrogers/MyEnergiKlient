@@ -242,7 +242,7 @@ private class MyEnergiDeserializer(val invalidSerials: List<String>) : Deseriali
             }
 
         eddis.removeAll { it.serialNumber in invalidSerials }
-        zappis.removeAll { it.serialNumber !in invalidSerials }
+        zappis.removeAll { it.serialNumber in invalidSerials }
         return MyEnergiSystem(
             eddis,
             zappis,
