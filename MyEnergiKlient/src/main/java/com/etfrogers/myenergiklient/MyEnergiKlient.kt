@@ -125,8 +125,7 @@ class MyEnergiClient(
                 log.debug('Error code is %s', E_CODES[-status])
                 raise DataTimeout(f'Request failed {suffix}, Error code {-status}: {E_CODES[-status]}')
          */
-        val system = Json.decodeFromString(MyEnergiDeserializer(), jsonText)
-        system.filterOutSerials(invalidSerials)
+        val system = Json.decodeFromString(MyEnergiDeserializer(invalidSerials), jsonText)
         return system
     }
 
@@ -201,26 +200,28 @@ internal class DeviceDeserializer<T: MyEnergiDevice>(val constructor: ()->T) : D
 
 }
 
-class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
+private class MyEnergiDeserializer(val invalidSerials: List<String>) : DeserializationStrategy<MyEnergiSystem> {
     override val descriptor: SerialDescriptor = buildClassSerialDescriptor(
         "MyEnergiSystem")
 
     override fun deserialize(decoder: Decoder): MyEnergiSystem {
         val input = decoder as? JsonDecoder ?: throw SerializationException("This class can be decoded only by Json format")
         val elements = input.decodeJsonElement() as? JsonArray ?: throw SerializationException("Expected JsonArray")
-        val system = MyEnergiSystem()
+        var props: SystemProperties? = null
+        val eddis: MutableList<Eddi> = mutableListOf()
+        val zappis: MutableList<Zappi> = mutableListOf()
         for (e in elements) {
             val element = e as JsonObject
             if (element.size == 1) {
                 element.forEach { entry ->
                     when (entry.key) {
                         "eddi" -> (entry.value as JsonArray).forEach {
-                            system.eddis.add(
+                            eddis.add(
                                 Json.decodeFromJsonElement(DeviceDeserializer(::Eddi), it)
                             )
                         }
                         "zappi" -> (entry.value as JsonArray).forEach {
-                            system.zappis.add(
+                            zappis.add(
                                 Json.decodeFromJsonElement(DeviceDeserializer(::Zappi), it)
                             )
                         }
@@ -236,35 +237,30 @@ class MyEnergiDeserializer : DeserializationStrategy<MyEnergiSystem> {
                     }
                 }
                 } else {
-                    val props = Json.decodeFromJsonElement<SystemProperties>(element)
-                    system.addProps(props)
+                    props = Json.decodeFromJsonElement<SystemProperties>(element)
                 }
             }
 
-        return system
+        eddis.removeAll { it.serialNumber in invalidSerials }
+        zappis.removeAll { it.serialNumber !in invalidSerials }
+        return MyEnergiSystem(
+            eddis,
+            zappis,
+            firmwareVersion = props?.firmwareVersion,
+            serverName = props?.serverName)
+
     }
 }
 
 
-class MyEnergiSystem{
-    val eddis = mutableListOf<Eddi>()
-    val zappis = mutableListOf<Zappi>()
-    val harvis = mutableListOf<Harvi>()
-    val libbis = mutableListOf<Libbi>()
-    lateinit var firmwareVersion: String
-        private set
-    lateinit var serverName: String
-        private set
-
-    internal fun addProps(props: SystemProperties){
-        serverName = props.serverName
-        firmwareVersion = props.firmwareVersion
-    }
-
-    fun filterOutSerials(invalidSerials: List<String>) {
-        eddis.removeAll { it.serialNumber in invalidSerials }
-        zappis.removeAll { it.serialNumber !in invalidSerials }
-    }
+class MyEnergiSystem internal constructor(
+    val eddis: List<Eddi> = listOf(),
+    val zappis: List<Zappi> = listOf(),
+    val harvis: List<Harvi> = listOf(),
+    val libbis: List<Libbi> = listOf(),
+    val firmwareVersion: String? = null,
+    val serverName: String? = null,
+) {
     /*
     def __init__(self, raw, check, house_data):
         self._values = {}
