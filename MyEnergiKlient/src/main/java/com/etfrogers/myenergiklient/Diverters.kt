@@ -182,25 +182,26 @@ class Zappi: MyEnergiDiverter() {
 
     var lockStatus: ZappiLockStatus = ZappiLockStatus()
 
+
+//    self._values['Zappi'] = self.charge_rate
+
+
+    /** Return True if any kind of boost is active */
+    val isBoostActive: Boolean
+        get() = isManualBoost || isSmartBoost || isTimedBoost
+
+    /** Returns True if car is connected */
+    val isCarConnected: Boolean
+        get() = carStatus != ZappiCarStatus.DISCONNECTED
+
+    val isWaitingForExport: Boolean
+        get() = isCarConnected && status == ZappiStatus.WAITING_FOR_EXPORT
+
+    /** Return the min charge rate in watts */
+    val minChargeRateWatts: Int
+        get() = (voltage * 6 * minGreenLevel / 100).toInt()
+
     /*
-    self._values['Zappi'] = self.charge_rate
-
-
-    def boost_active(self):
-        """Return True if any kind of boost is active"""
-        return self.manual_boost or self.smart_boost or self.timed_boost
-
-    def car_connected(self):
-        """Returns True if car is connected"""
-        return self.pstatus != 'Disconnected'
-
-    def waiting_for_export(self):
-        return self.car_connected() and self.status == 'Waiting for export'
-
-    def min_charge_rate_with_level(self):
-        """Return the min charge rate in watts"""
-        return int(self.voltage * 6 * self.min_green_level / 100)
-
     def get_values(self, key):
         """Return a tuple of (watts, amps) for a given device"""
         return (self._values[key], self._values[key] / self.voltage)
