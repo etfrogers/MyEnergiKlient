@@ -25,14 +25,22 @@ class CtMeter(
     val phase: Int?
 )
 
+typealias Meters = Map<String, CtMeter>
 @Serializable
 sealed class MyEnergiDevice{
     @SerialName("dat") lateinit var date: String
+        internal set
     @SerialName("tim") lateinit var inputTime: String
+        internal set
     lateinit var deviceClass: String
+        internal set
     @SerialName("sno") internal var serialNumberInt by notNullVal<Int>()
     @SerialName("fwv") lateinit var firmwareVersion: String
-    val ctMeters: MutableMap<String, CtMeter> = mutableMapOf()
+        internal set
+
+    var ctMeters: Meters = mapOf()
+        private set
+
     val time: Instant
         get() = DateTimeComponents.parse("$date $inputTime", myEnergiDateFormat).toInstantUsingOffset()
 
@@ -42,6 +50,9 @@ sealed class MyEnergiDevice{
     val serialNumber: String
         get() = serialNumberInt.toString()
 
+    fun setMeters(meters: Meters){
+        ctMeters = meters
+    }
     // generate cts
 }
 
@@ -67,7 +78,9 @@ sealed class MyEnergiDiverter: MyEnergiDevice() {
     @SerialName("newAppAvailable") var isNewAppAvailable by notNullVal<Boolean>()
     @SerialName("newBootloaderAvailable") var isNewBootloaderAvailable by notNullVal<Boolean>()
     lateinit var g100LockoutState: String
+        internal set
     lateinit var productCode: String
+        internal set
     var isVHubEnabled by notNullVal<Boolean>()
 
 
@@ -94,7 +107,9 @@ class Eddi: MyEnergiDiverter(){
     @SerialName("rbt") val remainingBoostTimeSeconds: Int = 0
     // These appear to be names, but not the same as shown in the app.
     @SerialName("ht1") lateinit var heater1: String
+        internal set
     @SerialName("ht2") lateinit var heater2: String
+        internal set
     internal var r1a: Int = 0
     internal var r2a: Int = 0
     @SerialName("rbc") internal var relayBoardInt by notNullVal<Int>()
@@ -126,6 +141,7 @@ class Zappi: MyEnergiDiverter() {
     // Zappi specific
     @SerialName("sta") var statusInt by notNullVal<Int>()
     @SerialName("pst") lateinit var pStatusCode: String
+        internal set
     @SerialName("zmo") var modeInt: Int by notNullVal<Int>()
 
     @SerialName("mgl") var minGreenLevel by notNullVal<Int>()
@@ -150,6 +166,7 @@ class Zappi: MyEnergiDiverter() {
     var zsh by notNullVal<Int>()
     @SerialName("beingTamperedWith") var isBeingTamperedWith by notNullVal<Boolean>()
     lateinit var phaseSetting: String
+        internal set
 
     val mode: ZappiMode
         get() = ZappiMode.fromInt(modeInt)
