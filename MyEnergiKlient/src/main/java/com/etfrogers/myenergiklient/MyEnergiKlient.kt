@@ -374,7 +374,7 @@ data class MyEnergiConfig(
     val username: String,
     @SerialName("api-key") val apiKey: String,
     @SerialName("zappi-sno") val zappiSerialNumber: String,
-    @SerialName("old-serial-numbers") val oldSerialNumbers: List<String> = listOf()
+    @SerialName("ignore-serial-numbers") val oldSerialNumbers: List<String> = listOf()
 )
 
 
