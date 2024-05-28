@@ -136,7 +136,11 @@ class Eddi: MyEnergiDiverter(){
 }
 
 //@Serializable
-class Zappi: MyEnergiDiverter() {
+class Zappi(): MyEnergiDiverter() {
+
+    constructor(pStatusCode: String) : this() {
+        this.pStatusCode = pStatusCode
+    }
 
     // Zappi specific
     @SerialName("sta") var statusInt by notNullVal<Int>()
