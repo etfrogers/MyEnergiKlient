@@ -252,8 +252,7 @@ private class MyEnergiDeserializer(val invalidSerials: List<String>) : Deseriali
     }
 }
 
-
-class MyEnergiSystem internal constructor(
+class MyEnergiSystem(
     val eddis: List<Eddi> = listOf(),
     val zappis: List<Zappi> = listOf(),
     val harvis: List<Harvi> = listOf(),
