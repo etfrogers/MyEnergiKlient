@@ -342,5 +342,6 @@ enum class EddiStatus{
 }
 
 
-class Harvi
-class Libbi
+class Harvi: MyEnergiDevice()
+
+class Libbi: MyEnergiDevice()
