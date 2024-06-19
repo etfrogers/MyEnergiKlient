@@ -5,6 +5,10 @@ import com.burgstaller.okhttp.CachingAuthenticatorDecorator
 import com.burgstaller.okhttp.digest.CachingAuthenticator
 import com.burgstaller.okhttp.digest.DigestAuthenticator
 import com.burgstaller.okhttp.digest.Credentials
+import kotlinx.datetime.Clock
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -30,7 +34,6 @@ import okhttp3.Response
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.reflect.KAnnotatedElement
-import kotlin.reflect.KClass
 import kotlin.reflect.KMutableProperty
 import kotlin.reflect.KProperty
 import kotlin.reflect.KProperty1
@@ -69,6 +72,7 @@ class MyEnergiClient(
     // self.__host = 'director.myenergi.net'
     private var host: String = DEFAULT_MYENERGI_SERVER
     private val client: OkHttpClient
+    private lateinit var cachedState: MyEnergiSystem
 
     init {
         val authenticator = DigestAuthenticator(Credentials(username, password))
@@ -126,10 +130,50 @@ class MyEnergiClient(
                 raise DataTimeout(f'Request failed {suffix}, Error code {-status}: {E_CODES[-status]}')
          */
         val system = Json.decodeFromString(MyEnergiDeserializer(invalidSerials), jsonText)
+        cachedState = system
         return system
     }
 
+    private fun snoToKey(sno: String): String {
+        /** Return the API key for sno */
 
+        val eddi = cachedState.eddiList().firstOrNull { it.serialNumber == sno }
+        if (eddi != null){
+            return "E$sno"
+        }
+        val zappi = cachedState.zappiList().firstOrNull {it.serialNumber == sno }
+        if (zappi != null) {
+            return "Z$sno"
+        }
+        throw DataException("serial number not found")
+    }
+
+    fun getHourData(sno: String, day: LocalDate): HourData {
+        /** Return hourly data for today */
+//        if (day == null) {
+//            day = Clock.System.todayIn(timezone)
+//        }
+
+        val data = load(suffix = "cgi-jdayhour-${snoToKey(sno)}-${day.year}-${day.monthNumber}-${day.dayOfMonth}")
+        val meters = decodeHistory(sno, data)
+        return HourData.fromMeters(meters)
+        }
+
+    fun getMinuteData(sno: String, day: LocalDate): DetailHistory {
+        /** Return minute data for today */
+//        if not day:
+//            day = time.localtime()
+
+        val sh = 0
+        val sm = 0
+        val mc = 1440
+
+        val data = load(
+            suffix=("cgi-jday-${snoToKey(sno)}-${day.year}-${day.monthNumber}-" +
+                    "${day.dayOfMonth}-$sh-$sm-$mc"))
+        val meters = decodeHistory(sno, data)
+        return DetailHistory.fromMeters(meters)
+    }
 }
 
 @Serializable
@@ -381,7 +425,14 @@ data class MyEnergiConfig(
 fun main(){
     val text = File("config.json").readText()
     val config = Json.decodeFromString<MyEnergiConfig>(text)
-    val status = MyEnergiClient(config.username, config.apiKey, config.oldSerialNumbers).getCurrentStatus()
+    val client = MyEnergiClient(config.username, config.apiKey, config.oldSerialNumbers)
+    val status = client.getCurrentStatus()
+    val sno = status.zappiList().first().serialNumber
+    val today = Clock.System.todayIn(TimeZone.of("Europe/London"))
+    val data = client.getMinuteData(sno, today)
+    val dataEddi = client.getMinuteData(status.eddiList().first().serialNumber, today)
+    val hourdata = client.getHourData(sno, today)
+    val hourdataEddi = client.getHourData(status.eddiList().first().serialNumber, today)
     println(status)
 }
 
@@ -425,7 +476,7 @@ def power_format(watts):
 
 */
 
-abstract class DataException(msg: String = ""): Exception(msg)
+open class DataException(msg: String = ""): Exception(msg)
     // General exception class
 
 
