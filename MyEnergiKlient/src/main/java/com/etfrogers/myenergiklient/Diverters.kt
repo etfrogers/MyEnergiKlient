@@ -160,6 +160,9 @@ class Zappi(): MyEnergiDiverter() {
     @SerialName("sbh") var smartBoostHour by notNullVal<Int>()
     @SerialName("sbm") var smartBoostMinute by notNullVal<Int>()
     @SerialName("bss") var isSmartBoostInt by notNullVal<Int>()
+    var wifiLink by notNullVal<Boolean>()
+    var ethernetLink by notNullVal<Boolean>()
+    var ocppEnabled by notNullVal<Boolean>()
 
     var pwm by notNullVal<Int>()
     var zs by notNullVal<Int>()
