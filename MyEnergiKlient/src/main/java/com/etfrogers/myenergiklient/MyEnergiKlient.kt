@@ -8,6 +8,8 @@ import com.burgstaller.okhttp.digest.Credentials
 import kotlinx.datetime.Clock
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.atStartOfDayIn
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.datetime.todayIn
 
 import kotlinx.serialization.SerialName
@@ -66,7 +68,8 @@ class HostRedirectInterceptor(private val redirectHeaderName: String,
 class MyEnergiClient(
     username: String,
     password: String,
-    private val invalidSerials: List<String> = listOf()
+    private val invalidSerials: List<String> = listOf(),
+    private val timezone: TimeZone,
     //private val house_conf={}))
 ) {
     // self.__host = 'director.myenergi.net'
@@ -153,25 +156,25 @@ class MyEnergiClient(
 //        if (day == null) {
 //            day = Clock.System.todayIn(timezone)
 //        }
+        val startTime = day.atStartOfDayIn(timezone).toLocalDateTime(TimeZone.UTC)
 
-        val data = load(suffix = "cgi-jdayhour-${snoToKey(sno)}-${day.year}-${day.monthNumber}-${day.dayOfMonth}")
-        val meters = decodeHistory(sno, data)
+        val data = load(suffix = "cgi-jdayhour-${snoToKey(sno)}-" +
+                "${startTime.year}-${startTime.monthNumber}-${startTime.dayOfMonth}-" +
+                "${startTime.hour}")
+        val meters = decodeHistory(sno, data, timezone)
         return HourData.fromMeters(meters)
         }
 
     fun getMinuteData(sno: String, day: LocalDate): DetailHistory {
         /** Return minute data for today */
-//        if not day:
-//            day = time.localtime()
-
-        val sh = 0
-        val sm = 0
-        val mc = 1440
+        val startTime = day.atStartOfDayIn(timezone).toLocalDateTime(TimeZone.UTC)
+        val minuteCount = 1440
 
         val data = load(
-            suffix=("cgi-jday-${snoToKey(sno)}-${day.year}-${day.monthNumber}-" +
-                    "${day.dayOfMonth}-$sh-$sm-$mc"))
-        val meters = decodeHistory(sno, data)
+            suffix=("cgi-jday-${snoToKey(sno)}-" +
+                    "${startTime.year}-${startTime.monthNumber}-${startTime.dayOfMonth}-" +
+                    "${startTime.hour}-${startTime.minute}-$minuteCount"))
+        val meters = decodeHistory(sno, data, timezone)
         return DetailHistory.fromMeters(meters)
     }
 }
@@ -425,10 +428,15 @@ data class MyEnergiConfig(
 fun main(){
     val text = File("config.json").readText()
     val config = Json.decodeFromString<MyEnergiConfig>(text)
-    val client = MyEnergiClient(config.username, config.apiKey, config.oldSerialNumbers)
+    val timezone = TimeZone.of("Europe/London")
+    val client = MyEnergiClient(
+        config.username,
+        config.apiKey,
+        config.oldSerialNumbers,
+        timezone)
     val status = client.getCurrentStatus()
     val sno = status.zappiList().first().serialNumber
-    val today = Clock.System.todayIn(TimeZone.of("Europe/London"))
+    val today = Clock.System.todayIn(timezone)
     val data = client.getMinuteData(sno, today)
     val dataEddi = client.getMinuteData(status.eddiList().first().serialNumber, today)
     val hourdata = client.getHourData(sno, today)

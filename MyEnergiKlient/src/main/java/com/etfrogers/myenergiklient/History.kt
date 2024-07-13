@@ -1,6 +1,9 @@
 package com.etfrogers.myenergiklient
 
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -27,9 +30,13 @@ internal data class MeterPoint(
     @SerialName("dow") private val dayOfWeekStr: String,
     @SerialName("hr") private val hour: Int = 0,
     @SerialName("min") private val minute: Int = 0,
+    var timezone: TimeZone? = null
 ){
     val timestamp: LocalDateTime
-        get() = LocalDateTime(year, month, dayOfMonth, hour, minute, 0)
+        get() = compensateTimestamp(
+            LocalDateTime(year, month, dayOfMonth, hour, minute, 0),
+            timezone
+        )
 }
 
 data class DetailHistory(
@@ -86,7 +93,7 @@ data class HourData(
     val exportReading: List<Int>,
     val divertReading: List<Int>,
     val boostReading: List<Int>,
-){
+) {
     companion object {
         internal fun fromMeters(meters: List<MeterPoint>): HourData {
             val timestamps = mutableListOf<LocalDateTime>()
@@ -97,7 +104,7 @@ data class HourData(
 
             meters.forEach {
                 timestamps.add(it.timestamp)
-                importReading.add(it.imported )
+                importReading.add(it.imported)
                 exportReading.add(it.export)
                 divertReading.add(it.diverted)
                 boostReading.add(it.boosted)
@@ -109,7 +116,15 @@ data class HourData(
     }
 }
 
-internal fun decodeHistory(sno: String, data: String): List<MeterPoint> {
+internal fun compensateTimestamp(timestamp: LocalDateTime, timezone: TimeZone?): LocalDateTime {
+    return if (timezone == null) {
+        timestamp
+    } else {
+        timestamp.toInstant(TimeZone.UTC).toLocalDateTime(timezone)
+    }
+}
+
+internal fun decodeHistory(sno: String, data: String, timezone: TimeZone): List<MeterPoint> {
     val json = Json.parseToJsonElement(data)
     val metersJsonObj = json.jsonObject
     if (metersJsonObj.size != 1){
@@ -117,5 +132,6 @@ internal fun decodeHistory(sno: String, data: String): List<MeterPoint> {
     }
     val metersJsonData = metersJsonObj["U$sno"] ?: throw SerializationException("Expected serial number not found")
     val meters = Json.decodeFromJsonElement<List<MeterPoint>>(metersJsonData)
+    meters.map { it.timezone = timezone }
     return meters
 }
