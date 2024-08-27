@@ -1,9 +1,9 @@
 package com.etfrogers.myenergiklient
 
+import kotlinx.datetime.Instant
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toInstant
-import kotlinx.datetime.toLocalDateTime
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -32,15 +32,16 @@ internal data class MeterPoint(
     @SerialName("min") private val minute: Int = 0,
     var timezone: TimeZone? = null
 ){
-    val timestamp: LocalDateTime
-        get() = compensateTimestamp(
-            LocalDateTime(year, month, dayOfMonth, hour, minute, 0),
-            timezone
-        )
+    val timestamp: Instant
+        get() =
+            LocalDateTime(
+                year, month, dayOfMonth,
+                hour, minute, 0)
+                .toInstant(timezone ?: TimeZone.UTC)
 }
 
 data class DetailHistory(
-    val timestamps: List<LocalDateTime>,
+    val timestamps: List<Instant>,
     val voltage: List<Float>,
     val frequency: List<Float>,
     val importPower: List<Float>,
@@ -51,7 +52,7 @@ data class DetailHistory(
 ){
     companion object {
         internal fun fromMeters(meters: List<MeterPoint>): DetailHistory{
-            val timestamps = mutableListOf<LocalDateTime>()
+            val timestamps = mutableListOf<Instant>()
             val voltage = mutableListOf<Float>()
             val frequency = mutableListOf<Float>()
             val importPower = mutableListOf<Float>()
@@ -88,7 +89,7 @@ data class DetailHistory(
 }
 
 data class HourData(
-    val timestamps: List<LocalDateTime>,
+    val timestamps: List<Instant>,
     val importReading: List<Int>,
     val exportReading: List<Int>,
     val divertReading: List<Int>,
@@ -96,7 +97,7 @@ data class HourData(
 ) {
     companion object {
         internal fun fromMeters(meters: List<MeterPoint>): HourData {
-            val timestamps = mutableListOf<LocalDateTime>()
+            val timestamps = mutableListOf<Instant>()
             val importReading = mutableListOf<Int>()
             val exportReading = mutableListOf<Int>()
             val divertReading = mutableListOf<Int>()
@@ -116,13 +117,6 @@ data class HourData(
     }
 }
 
-internal fun compensateTimestamp(timestamp: LocalDateTime, timezone: TimeZone?): LocalDateTime {
-    return if (timezone == null) {
-        timestamp
-    } else {
-        timestamp.toInstant(TimeZone.UTC).toLocalDateTime(timezone)
-    }
-}
 
 internal fun decodeHistory(sno: String, data: String, timezone: TimeZone): List<MeterPoint> {
     val json = Json.parseToJsonElement(data)
